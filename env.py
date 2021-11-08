@@ -1,5 +1,6 @@
 from itertools import product
 import numpy as np
+import torch
 
 INVALID_ACTION_REWARD = -100
 PACKAGE_REWARD = 10
@@ -12,7 +13,7 @@ class Environment():
     def __init__(self, n=10, max_delta=3, frac_traffic=0.2, package_frac=0.05, package_prob=0.2):
         self.num_rows = n
         self.num_cols = n
-        self.loc = np.array([int(n/2), int(n/2)])
+        self.loc = np.array([float(int(n/2)), float(int(n/2))])
         self.max_delta = max_delta
 
         # generate initial traffic in random spots on the matrix
@@ -24,14 +25,16 @@ class Environment():
 
         # generate initial packages
         self.max_packages = int(n**2 / 15)
-        self.package_idxs = np.zeros([self.max_packages, 2])
+        self.package_idxs = np.zeros([self.max_packages, 2], )
         self.package_idxs[:int(self.max_packages*2/3)] = np.random.randint(0, n, [int(self.max_packages*2/3),2])
 
         self.num_packages = int(self.max_packages*2/3)
         self.package_prob = package_prob
 
     def get_state(self):
-        state = [self.loc, self.package_idxs, self.traffic_idxs]
+        state = list(self.loc)
+        state.extend(list(self.package_idxs.flatten()))
+        state.extend(list(self.traffic_idxs.flatten()))
         return state
 
     def simulate_packages(self):
@@ -120,9 +123,9 @@ class Environment():
     def step(self, action):
         # update the state, simulate traffic, and return reward
         # expects an action as input in the form (delta i, delta j)
-        if action not in self.valid_actions():
-            return INVALID_ACTION_REWARD
         last_state = self.get_state()
+        if action not in self.valid_actions():
+            return last_state, action, INVALID_ACTION_REWARD, last_state
 
         reward = 0
         self.loc += action
