@@ -2,7 +2,7 @@ from itertools import product
 import numpy as np
 import torch
 
-INVALID_ACTION_REWARD = -100
+INVALID_ACTION_REWARD = -20
 PACKAGE_REWARD = 10
 
 
@@ -31,8 +31,20 @@ class Environment():
         self.num_packages = int(self.max_packages*2/3)
         self.package_prob = package_prob
 
+    def get_idx(self, array, value):
+        idx = 0
+        value = list(value.copy())
+        valid = False
+        for curr_val in array:
+            if list(curr_val.copy()) == value:
+                valid = True
+                break
+            idx += 1
+        return valid, idx
+
     def get_state(self):
         state = list(self.loc)
+        state.append(self.num_rows)
         state.extend(list(self.package_idxs.flatten()))
         state.extend(list(self.traffic_idxs.flatten()))
         return state
@@ -44,7 +56,8 @@ class Environment():
             package_idx = tuple(np.random.randint(0, self.num_rows, size=2))
             if package_idx in self.package_idxs:
                 continue
-            np.append(self.package_idxs, package_idx)
+            valid, insert_idx = self.get_idx(self.package_idxs, [0,0])
+            self.package_idxs[insert_idx] = package_idx
             self.num_packages += 1
 
 
@@ -64,76 +77,60 @@ class Environment():
                 # propogate this traffic to a random neighbor
                 poss_directions = [(1,0), (-1,0), (0,1), (0,-1)]
                 direction = poss_directions[np.random.choice(range(4))]
-                np.append(self.traffic_idxs, curr_traffic_idx + direction)
+
+                valid, insert_idx = self.get_idx(self.traffic_idxs, [0,0])
+                if not valid:
+                    idx +=1
+                    continue
+                self.traffic_idxs[insert_idx] = curr_traffic_idx + direction
                 idx += 1
                 self.num_traffic += 1
             else:
                 # remove traffic from this idx
-                self.traffic_idxs = np.delete(self.traffic_idxs, idx, 0)
+                remove_idx = self.get_idx(self.traffic_idxs, curr_traffic_idx)
+                self.traffic_idxs[remove_idx] = [0,0]
                 self.num_traffic -= 1
 
-    def valid_actions(self):
-        # returns the list of possible actions
-        # this depends on the current location and traffic
-        # you can only move horizontally or vertically
-        action_list = [(0,0)]
 
-        for i in range(self.max_delta+1):
-            poss_loc = self.loc + (i,0)
-            if poss_loc[0] >= self.num_rows or poss_loc[1] >= self.num_cols:
-                # if out of bounds then ignore
-                break
-            action_list.append((i, 0))
-            if poss_loc in self.traffic_idxs:
-                # if a cell has traffic we can move into it but not out (in the same timestep)
-                break
+    def check_position(self, new_loc):
+        if new_loc[0] < -self.num_rows or new_loc[0] >= self.num_rows:
+            return False
+        if new_loc[1] < -self.num_rows or new_loc[1] >= self.num_rows:
+            return False
+        return True
 
-        for i in range(-self.max_delta, 0):
-            # must split for traffic check
-            poss_loc = self.loc + (i,0)
-            if poss_loc[0] >= self.num_rows or poss_loc[1] >= self.num_cols:
-                # if out of bounds then ignore
-                break
-            action_list.append((i, 0))
-            if poss_loc in self.traffic_idxs:
-                break
+    def compute_delta(self, action):
+        idx = 0 if action[0] is not 0 else 1
+        direction = np.sign(action[idx])
+        change = np.zeros(2)
 
-        for j in range(self.max_delta + 1):
-            poss_loc = self.loc + (0,j)
-            if poss_loc[0] >= self.num_rows or poss_loc[1] >= self.num_cols:
-                # if out of bounds then ignore
+        while direction * change[idx] in range(0, direction * action[idx]):
+            change[idx] += 1 * direction
+            on_traffic, traffic_idx = self.get_idx(self.traffic_idxs, self.loc + change)
+            if on_traffic:
                 break
-            action_list.append((0,j))
-            if poss_loc in self.traffic_idxs:
-                # if a cell has traffic we can move into it but not out (in the same timestep)
-                break
-
-        for j in range(-self.max_delta, 0):
-            # must split for traffic check
-            poss_loc = self.loc + (0,j)
-            if poss_loc[0] >= self.num_rows or poss_loc[1] >= self.num_cols:
-                # if out of bounds then ignore
-                break
-            action_list.append((0,j))
-            if poss_loc in self.traffic_idxs:
-                break
-
-        return action_list
+        return change
 
     def step(self, action):
         # update the state, simulate traffic, and return reward
         # expects an action as input in the form (delta i, delta j)
         last_state = self.get_state()
-        if action not in self.valid_actions():
-            return last_state, action, INVALID_ACTION_REWARD, last_state
 
-        reward = 0
-        self.loc += action
-        if self.loc in self.package_idxs[0]:
-            print("REWARD")
+        reward = -1
+        new_loc = self.loc + self.compute_delta(action)
+        # new_loc = self.loc + action
+        valid_loc = self.check_position(new_loc)
+        if not valid_loc:
+            reward = INVALID_ACTION_REWARD
+            return last_state, action, reward, last_state
+        self.loc = new_loc
+
+        valid, package_remove_idx = self.get_idx(self.package_idxs, self.loc)
+        if valid:
+            # print("REWARD")
             reward = PACKAGE_REWARD
-            idx = np.where(self.package_idxs == self.loc)
-            self.package_idxs.remove(self.loc)
+            self.package_idxs[package_remove_idx] = [0,0]
+            # print(len(self.traffic_idxs.flatten()))
         self.simulate_traffic()
 
         new_state = self.get_state()
