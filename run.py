@@ -1,5 +1,6 @@
 from env import Environment
 from sarsa import Q_Function
+from soft_sarsa import soft_Q_Function
 
 import argparse
 import os
@@ -31,7 +32,10 @@ class run():
 
 
         input_size = int(args.n**2/15)*2 + 2 + 2 + 1 + int(args.n**2/5)*2
-        self.Q = Q_Function(input_size, args.lr, args.dr, self.num_actions)
+        if args.model == "regualr":
+            self.Q = Q_Function(input_size, args.lr, args.dr, self.num_actions)
+        if args.model == "soft":
+            self.Q = soft_Q_Function(input_size, args.lr, args.dr, self.num_actions)
 
     def log(self, loop, avg_reward, avg_loss):
         str = f"On the {loop}th iteration the average loss was {avg_loss}\
@@ -88,6 +92,7 @@ class run():
 
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--model", default="regular")
     arg_parser.add_argument("--num_episodes", default=10, type=int)
     arg_parser.add_argument("--num_steps", default = 100, type=int)
     arg_parser.add_argument("-n", default=10, type=int)

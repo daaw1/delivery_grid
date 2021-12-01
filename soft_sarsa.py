@@ -3,14 +3,14 @@ import torch
 import torch.nn as nn
 import copy
 
-class Q_Function():
+class soft_Q_Function():
     def __init__(self, input_size, learning_rate, discount_rate, num_actions):
         self.model = nn.Sequential(
             nn.Linear(input_size, 1000),
             nn.LeakyReLU(),
             nn.Linear(1000, 500),
-            nn.LeakyReLU(), #?
-            nn.Linear(500, 1) #?
+            nn.LeakyReLU(),
+            nn.Linear(500, 1)
         )
         self.model = self.model.float()
         self.target_model = copy.deepcopy(self.model)
@@ -27,16 +27,18 @@ class Q_Function():
             self.idx_to_delta[action] = [elem * (int(action%3)+1) for elem in curr_dir]
 
 
-    def choose_action(self, state, model="curr"):
-        if np.random.rand() > 0.9:
-            size = len(state) if type(state[0]) == list else 1
-            return np.random.choice(range(self.num_actions), size=size)
 
-        # choose optimal action given Q function
+    def choose_action(self, state, model="curr"):
+        # if np.random.rand() > 0.9:
+        #     size = len(state) if type(state[0]) == list else 1
+        #     return np.random.choice(range(self.num_actions), size=size)
+
+        # choose action probabilistically given Q function
         all_vals = []
         for action in range(self.num_actions):
             if type(state[0]) == list:
                 action = [action] * len(state)
+                print("list")
             else:
                 action = [action]
             if model == "curr":
@@ -44,12 +46,11 @@ class Q_Function():
             else:
                 curr_vals = self.target_forward(state, action)
             all_vals.append(curr_vals)
-        best_action = torch.stack(all_vals).T
-        best_action = torch.argmax(best_action, dim=2)
-        best_action = best_action.tolist()
-        best_action = best_action[0]
+        probs = torch.F.softmax(all_vals)
+        entropy = -np.log(probs)
+        action = np.random.choice(a=range(len(probs)), p=probs+entropy)
 
-        return best_action
+        return action
 
 
 
@@ -87,11 +88,11 @@ class Q_Function():
         all_loss = []
         all_loss_tensor = []
         for curr_tuple in sars_tuples:
-            s, a, r, sp = curr_tuple
+            s, a, r, sp, entropy = curr_tuple
 
             curr_val = self.forward(s, a)
             with torch.no_grad():
-                ap = self.choose_action(sp, model="target")
+                ap, _ = self.choose_action(sp, model="target")
                 next_val = r + self.discount_rate * self.target_forward(sp, ap)
             loss = self.loss(curr_val, next_val)
             all_loss.append(float(loss))
