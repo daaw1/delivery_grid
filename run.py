@@ -29,6 +29,7 @@ class run():
         self.log_file = open(self.curr_directory + "/log.txt", "w")
         self.reward_file = open(self.curr_directory + "/reward.txt", "w")
         self.loss_file = open(self.curr_directory + "/loss.txt", "w")
+        self.explore_file = open(self.curr_directory + "/explore.txt", "w")
 
 
         input_size = int(args.n**2/15)*2 + 2 + 2 + 1 + int(args.n**2/5)*2
@@ -37,13 +38,17 @@ class run():
         if args.model == "soft":
             self.Q = soft_Q_Function(input_size, args.lr, args.dr, self.num_actions)
 
-    def log(self, loop, avg_reward, avg_loss):
+    def log(self, loop, avg_reward, avg_loss, explored_list):
         str = f"On the {loop}th iteration the average loss was {avg_loss}\
          and the average episodic reward was {avg_reward}"
         print(str)
+        explore_frac = sum(explored_list) / len(explored_list)
+        str2 = f"We explored {explore_frac}% of the time"
+        print(str2)
         self.log_file.write(str + "\n")
         self.reward_file.write(f"{avg_reward}\n")
         self.loss_file.write(f"{avg_loss}\n")
+        self.explore_file.write(f"{explore_frac}\n")
 
     def train(self):
         # train until convergence
@@ -52,6 +57,7 @@ class run():
             # reset data
             self.data = []
             all_rewards = []
+            all_explore = []
 
             # execute policy, collect data
             for curr_episodes in range(self.num_episodes):
@@ -60,13 +66,14 @@ class run():
 
                 s = self.curr_env.get_state() # initial state
                 for t in range(self.num_steps):
-                    action = self.Q.choose_action(s)[0]
+                    action, explore = self.Q.choose_action(s)
                     action_delta = self.idx_to_delta[action]
                     s, a, r, sp = self.curr_env.step(action_delta)
                     self.data.append([s, action, r, sp])
                     s = sp
 
                     episode_rewards.append(r)
+                    all_explore.append(explore)
 
                 # print(episode_rewards)
                 episode_rewards = np.sum(episode_rewards)
@@ -79,7 +86,7 @@ class run():
             # check convergence and reset if necessary
             avg_reward = np.mean(all_rewards)
             if loop % 1 == 0:
-                self.log(loop, avg_reward, avg_loss)
+                self.log(loop, avg_reward, avg_loss, all_explore)
             if loop % 5 == 0:
                 print("Updated Target Model")
                 self.Q.target_model = copy.deepcopy(self.Q.model)

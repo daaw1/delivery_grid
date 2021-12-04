@@ -26,12 +26,16 @@ class soft_Q_Function():
             curr_dir = dirs[int(action / 3)]
             self.idx_to_delta[action] = [elem * (int(action%3)+1) for elem in curr_dir]
 
+        self.entropy_weight = 0.5
+
 
 
     def choose_action(self, state, model="curr"):
         # if np.random.rand() > 0.9:
         #     size = len(state) if type(state[0]) == list else 1
-        #     return np.random.choice(range(self.num_actions), size=size)
+        #     actions = np.random.choice(range(self.num_actions), size=size)
+        #     action = actions.tolist()[0]
+        #     return action
 
         # choose action probabilistically given Q function
         all_vals = []
@@ -46,11 +50,25 @@ class soft_Q_Function():
             else:
                 curr_vals = self.target_forward(state, action)
             all_vals.append(curr_vals)
-        probs = torch.F.softmax(all_vals)
+        all_vals = torch.tensor(all_vals)
+        # print(all_vals)
+        probs = nn.functional.softmax(all_vals, dim=0)
+        optimal_action = np.argmax(all_vals)
         entropy = -np.log(probs)
-        action = np.random.choice(a=range(len(probs)), p=probs+entropy)
+        entropy = nn.functional.softmax(entropy, dim=0)
+        weighted_probs = nn.functional.softmax(probs + self.entropy_weight*entropy, dim=0)
 
-        return action
+        weighted_probs = weighted_probs.numpy()
+        # action = np.random.choice(a=range(len(weighted_probs)), p=weighted_probs)
+        action = np.argmax(weighted_probs)
+
+        explore = action != optimal_action
+        # print(entropy)
+        # print(max(all_vals) - min(all_vals))
+        # print(action)
+        # action = int(torch.argmax(all_vals, dim=0))
+
+        return action, explore
 
 
 
@@ -73,6 +91,8 @@ class soft_Q_Function():
     def target_forward(self, state, actions):
         if type(state[0]) is not list:
             state = [state]
+        if type(actions) is not list:
+            actions = [actions]
         action_delta = [self.idx_to_delta[action] for action in actions]
         action_delta = torch.tensor(action_delta)
 
@@ -88,7 +108,7 @@ class soft_Q_Function():
         all_loss = []
         all_loss_tensor = []
         for curr_tuple in sars_tuples:
-            s, a, r, sp, entropy = curr_tuple
+            s, a, r, sp = curr_tuple
 
             curr_val = self.forward(s, a)
             with torch.no_grad():
@@ -101,4 +121,7 @@ class soft_Q_Function():
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
+
+        # if self.entropy_weight > 0.01:
+        #     self.entropy_weight -= 0.01
         return np.mean(all_loss)
