@@ -14,7 +14,13 @@ def get_reward(reward_file):
     x = range(len(rewards))
     return x, rewards
 
-def run(all_names):
+def get_exploration(explore_file):
+    explores = explore_file.readlines()
+    explores = [float(line.rstrip()) for line in explores[:500]]
+    x = range(len(explores))
+    return x, explores
+
+def run(all_names, type="loss"):
     file_directory = os.path.dirname(__file__)
     max_reward = 0
     for name in all_names:
@@ -22,10 +28,9 @@ def run(all_names):
 
         reward_file = open(curr_directory + "/reward.txt", "r")
         curr_iter, curr_rewards = get_reward(reward_file)
-        plt.plot(curr_iter, curr_rewards, label=f"{name}")
+        x,y = curr_iter, curr_rewards
+        plt.plot(x, y, label=f"{name}")
 
-        if max(curr_rewards) > max_reward:
-            max_reward = max(curr_rewards)
     plt.title("Environment Rewards")
     plt.xlabel("Iterations")
     plt.ylabel("Average Episodic Reward")
@@ -38,14 +43,20 @@ def run(all_names):
         curr_directory = f"./experiments/{name}"
 
         loss_file = open(curr_directory + "/loss.txt", "r")
-        curr_iter, curr_losses = get_loss(loss_file)
-        plt.plot(curr_iter, curr_losses, label=f"{name}")
 
-        if max(curr_rewards) > max_reward:
-            max_reward = max(curr_rewards)
+
+        if type == "Loss":
+            curr_iter, curr_losses = get_loss(loss_file)
+            x,y = curr_iter, curr_losses
+        if type == "Explore":
+            explore_file = open(curr_directory + "/explore.txt", "r")
+            curr_iter, curr_explore = get_exploration(explore_file)
+            x,y = curr_iter, curr_explore
+        plt.plot(x, y, label=f"{name}")
+
     plt.title("SARSA Loss")
     plt.xlabel("Iterations")
-    plt.ylabel("Average Loss")
+    plt.ylabel(f"Average {type}")
 
     plt.legend()
     plt.show()
@@ -54,6 +65,6 @@ if __name__ == "__main__":
     all_names = ["baseline_sarsa", "penalized_sarsa", "traffic_sarsa"]
     run(all_names)
 
-    all_names_2 = ["traffic_sarsa", "soft_sarsa"]
-    # run(all_names_2)
+    all_names_2 = ["soft_sarsa_p1", "soft_sarsa_p50"]
+    run(all_names_2, type="Explore")
 
